@@ -122,6 +122,7 @@ module Sensu
         })
         @connection.logger = @logger
         @connection.on_open do
+          @logger.info('rabbitmq connection open')
           @connection_timeout.cancel
           callback.call if callback
         end
@@ -129,8 +130,11 @@ module Sensu
         @connection.on_skipped_heartbeats(&reconnect_callback)
       end
 
-      def setup_channel(options={})
-        @channel = AMQP::Channel.new(@connection)
+      def setup_channel(options={}, &callback)
+        @channel = AMQP::Channel.new(@connection) do
+          @logger.info('rabbitmq channel open')
+          callback.call if callback
+        end
         @channel.auto_recovery = true
         @channel.on_error do |channel, channel_close|
           error = Error.new("rabbitmq channel closed")
@@ -145,8 +149,10 @@ module Sensu
 
       def connect_with_eligible_options(&callback)
         options = next_connection_options
-        setup_connection(options, &callback)
-        setup_channel(options)
+        setup_connection(options)
+        setup_channel(options) do
+          callback.call if callback
+        end
       end
 
       def periodically_reconnect(delay=2)
@@ -160,8 +166,8 @@ module Sensu
                 @reconnecting = false
                 @after_reconnect.call
               end
-            rescue EventMachine::ConnectionError
-            rescue Java::JavaLang::RuntimeException
+            rescue => e
+              @logger.error("#{e.class} => #{e}")
             end
           end
         end
