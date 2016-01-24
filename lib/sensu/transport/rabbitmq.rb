@@ -126,7 +126,32 @@ module Sensu
           @connection_timeout.cancel
           callback.call if callback
         end
-        @connection.on_tcp_connection_loss(&reconnect_callback)
+
+        @connection.on_blocked do |conn, payload|
+          @logger.info('rabbitmq connection blocked')
+          @on_error.call(Error.new("Transport connection blocked"))
+        end
+
+        @connection.on_unblocked do |conn, payload|
+          @logger.info('rabbitmq connection unblocked')
+          reconnect
+        end
+
+        @connection.on_tcp_connection_failure do |settings|
+          @logger.info('rabbitmq tcp connection failure')
+          @on_error.call(Error.new("Transport connection failure"))
+        end
+
+        @connection.on_tcp_connection_loss do |settings|
+          @logger.info('rabbitmq tcp connection loss')
+          @on_error.call(Error.new("Transport connection loss"))
+        end
+
+        @connection.on_possible_authentication_failure do |settings|
+          @logger.info('rabbitmq auth failure')
+          @on_error.call(Error.new("Transport auth failure"))
+        end
+
         @connection.on_skipped_heartbeats(&reconnect_callback)
       end
 
